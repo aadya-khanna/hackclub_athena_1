@@ -1,5 +1,5 @@
 { "columns":16,
- "image":"../images/TX_Tileset_Grass.png",
+ "image":"assets/images/TX_Tileset_Grass.png",
  "imageheight":256,
  "imagewidth":256,
  "margin":0,

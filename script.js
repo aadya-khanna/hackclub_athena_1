@@ -1,5 +1,5 @@
-const c = document.getElementById("gameCanvas");
-const ctx = c.getContext("2d");
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
 const tileSize = 32;
 let mapData;
@@ -17,7 +17,7 @@ const keys = {};
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
 
-const tilesetImages = [];
+let tilesetImages = [];
 
 function loadImage(src) {
     return new Promise((resolve, reject) => {
@@ -33,7 +33,6 @@ fetch('map.tmj')
   .then(async map => {
     mapData = map;
 
-    // Load all tilesets
     tilesetImages = await Promise.all(
       map.tilesets.map(async tsj => {
         const tileset = await fetch(tsj.source).then(res => res.json());
@@ -42,9 +41,15 @@ fetch('map.tmj')
       })
     );
 
-    console.log('Map and tilesets loaded!', tilesetImages);
-    //  call drawMap() or start your game loop
+    canvas.width = mapData.width * mapData.tilewidth;
+    canvas.height = mapData.height * mapData.tileheight;
+
+    console.log('All tilesets loaded:', tilesetImages);
+
+    // Start game loop
+    gameLoop();
 });
+
 
 function collisionCheck(layer, playerX, playerY) {
     if (!layer) return false; 
@@ -61,20 +66,44 @@ function collisionCheck(layer, playerX, playerY) {
     return tile !== 0; 
 }
 
-function drawLayer(layer) {
-    if (!layer) return;
-    const tiles = layer.data;
 
-    for(let y = 0; y < layer.height; y++) {
-        for(let x = 0; x < layer.width; x++) {
-            const tile = tiles[y * layer.width + x];
-            if(tile !== 0) {
-                ctx.fillStyle = '#888'
-                ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+function drawLayer(layer) {
+    if (!layer || layer.type !== "tilelayer") return;
+
+    for (let y = 0; y < layer.height; y++) {
+        for (let x = 0; x < layer.width; x++) {
+            const tileId = layer.data[y * layer.width + x];
+            if (tileId === 0) continue; // empty
+
+            // Find correct tileset
+            let ts = null;
+            for (let i = tilesetImages.length - 1; i >= 0; i--) {
+                if (tileId >= tilesetImages[i].firstgid) {
+                    ts = tilesetImages[i];
+                    break;
+                }
             }
+            if (!ts) continue;
+
+            const tileNum = tileId - ts.firstgid;
+            const tilesPerRow = ts.tileset.columns;
+
+            const sx = (tileNum % tilesPerRow) * ts.tileset.tilewidth;
+            const sy = Math.floor(tileNum / tilesPerRow) * ts.tileset.tileheight;
+
+            const dx = x * mapData.tilewidth;
+            const dy = y * mapData.tileheight;
+
+            ctx.drawImage(
+                ts.img,
+                sx, sy, ts.tileset.tilewidth, ts.tileset.tileheight,
+                dx, dy, mapData.tilewidth, mapData.tileheight
+            );
         }
     }
 }
+
+
 
 function gameLoop() {
     let newX = player.x;
@@ -85,26 +114,27 @@ function gameLoop() {
     if(keys['ArrowLeft']) newX -= player.speed;
     if(keys['ArrowRight']) newX += player.speed;
 
-    const wallLayer = mapData.layers.find(layer => layer.name === 'Wall_1');
-    const propLayer = mapData.layers.find(layer => layer.name === 'propsCollision');
+    const wallLayer = mapData.layers.find(l => l.name === 'Wall_1');
+    const propLayer = mapData.layers.find(l => l.name === 'propsCollision');
 
     if(!collisionCheck(wallLayer, newX, newY) && !collisionCheck(propLayer, newX, newY)) {
         player.x = newX;
         player.y = newY;
     }
 
-    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    drawLayer(mapData.layers.find(layer => layer.name === 'Grass_0'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'Grass_1'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'Grass_2'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'Stair_1'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'Stair_2'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'propsCollision'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'Wall_0'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'Wall_1'));
-    drawLayer(mapData.layers.find(layer => layer.name === 'Wall_2'));
+    // Draw layers in order (floor first, then props, then walls)
+    const layerOrder = [
+         'Wall_0'
+    ];
 
+    layerOrder.forEach(name => {
+        const layer = mapData.layers.find(l => l.name === name);
+        drawLayer(layer);
+    });
+
+    // Draw player
     ctx.fillStyle = 'blue';
     ctx.fillRect(player.x, player.y, player.width, player.height);
 
